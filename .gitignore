@@ -1,1 +1,4 @@
 data/
+boot9_tools/
+__pycache__/
+*.pyc

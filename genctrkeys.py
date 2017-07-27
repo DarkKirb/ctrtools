@@ -17,11 +17,22 @@ def scramble(keyX, keyY):
         assert a>=0
         return a & ((2**128)-1)
     rotate = lambda c,v: (asint128(c<<v) | (asint128(c>>(128-v))))
-    return rotate((rotate(keyX,2) ^ keyY) + ctrkeys["keyscrambler-const"], 87)
+    key = rotate(asint128((rotate(keyX,2) ^ keyY) + ctrkeys["keyscrambler-const"]), 87)
+    return key
+
+def rescramble():
+    for k in ctrkeys["defaultKeyslots"].keys():
+        if ('X' in ctrkeys["defaultKeyslots"][k]) and ('Y' in ctrkeys["defaultKeyslots"][k]):
+            ctrkeys["defaultKeyslots"][k]['N'] = scramble(ctrkeys["defaultKeyslots"][k]['X'], ctrkeys["defaultKeyslots"][k]['Y'])
 
 
 def isN3DS():
-    return os.path.getsize("data/nand_minsize.bin") >= 1300234240 #N3DS nand size
+    with open("data/nand.bin","rb") as f:
+        f.read(0x120)
+        f.read(4*0x8)
+        f.read(4)
+        length = int.from_bytes(f.read(4), 'little')
+        return length == 0x41ED0000
 
 def isDev3DS():
     value=None
@@ -104,7 +115,7 @@ conunique_hash = hashlib.sha256(conunique).digest()
 
 ctrkeys["defaultKeyslots"][0x3F]['X'] = int.from_bytes(conunique_hash[:16], 'big')
 ctrkeys["defaultKeyslots"][0x3F]['Y'] = int.from_bytes(conunique_hash[16:], 'big')
-ctrkeys["defaultKeyslots"][0x3F]['N'] = scramble(ctrkeys["defaultKeyslots"][0x3F]['X'], ctrkeys["defaultKeyslots"][0x3F]['Y'])
+rescramble()
 
 print("Generating Console Unique keys")
 def decryptKeys(f, size=64):
@@ -113,20 +124,19 @@ def decryptKeys(f, size=64):
     o=f.tell()
     conunique = f.read(64)
     f.seek(o+size)
-    return io.BytesIO(AES.new(ctrkeys["defaultKeyslots"][0x3F]['N'].to_bytes(16, 'big'), AES.MODE_CBC, aesiv).encrypt(conunique))
+    cipher = AES.new(ctrkeys["defaultKeyslots"][0x3F]['N'].to_bytes(16, 'big'), AES.MODE_CBC, aesiv)
+    keydata = cipher.encrypt(conunique)
+    return io.BytesIO(keydata)
 with open("data/boot9.bin", "rb") as boot9:
     if ctrkeys["isDev3DS"]:
         boot9.seek(0xDC60)
     else:
         boot9.seek(0xD860)
-    boot9.read(36)
     f = decryptKeys(boot9)
     keys(f, 0x04, 'X')
     keys(f, 0x08, 'X')
     keys(f, 0x0C, 'X')
-    o=f.tell()
     boot9keys[0x10]['X'] = int.from_bytes(f.read(16), 'big')
-    f.seek(o)
 
     f = decryptKeys(boot9, 16)
     keys_inc(f, 0x14, 'X')
@@ -135,17 +145,28 @@ with open("data/boot9.bin", "rb") as boot9:
     keys(f, 0x18, 'X')
     keys(f, 0x1C, 'X')
     keys(f, 0x20, 'X')
-    o=f.tell()
     boot9keys[0x24]['X'] = int.from_bytes(f.read(16), 'big')
-    f.seek(o)
 
     f = decryptKeys(boot9, 16)
     keys_inc(f, 0x28, 'X')
 
 if ctrkeys["isN3DS"]:
     ctrkeys["defaultKeyslots"][0x05]['Y'] = 0x4D804F4E9990194613A204AC584460BE
-    ctrkeys["defaultKeyslots"][0x05]['N'] = scramble(ctrkeys["defaultKeyslots"][0x05]['X'], ctrkeys["defaultKeyslots"][0x05]['Y'])
+rescramble()
 
+with open("data/nand.bin", "rb") as nand:
+    #There is an embedded backup when using d9
+    nand.seek(0xC00)
+    ctrkeys["nand"] = {}
+    ctrkeys["nand"]["cid"] = int.from_bytes(nand.read(16),'big')
+    ctr = int.from_bytes(hashlib.sha256(ctrkeys["nand"]["cid"].to_bytes(16,'big')).digest()[:16], 'big')
+    ctrkeys["nand"]["ctr"] = ctr
+    ctr += 0xB13000
+    nand.seek(0xB130000)
+    #As a small test: Decrypt the first sector of FIRM0 and check for the FIRM header
+    encctr = int.from_bytes(AES.new(ctrkeys["defaultKeyslots"][0x06]['N'].to_bytes(16, 'big'), AES.MODE_ECB).encrypt(ctr.to_bytes(16, 'big')), 'big')
+    header = (int.from_bytes(nand.read(16), 'big') ^ encctr).to_bytes(16, 'big')
+    print(header)
 
 print(yaml.dump(ctrkeys, default_flow_style=False))
 
