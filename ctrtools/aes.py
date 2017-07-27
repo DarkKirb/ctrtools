@@ -2,7 +2,7 @@ from Crypto.Cipher import AES
 from . import ctrkeys
 
 def asint128(a):
-    return a & (1**128-1)
+    return a & (2**128-1)
 
 class AESKey(object):
     def __init__(self, key, twl=False):
@@ -18,6 +18,8 @@ class AESKey(object):
         return repr(self)
     def __bytes__(self):
         return self.key.to_bytes(16, 'big')
+    def __int__(self):
+        return self.key
 
     def __add__(self, other):
         return AESKey(self.key - other.key)
@@ -116,11 +118,11 @@ class Keyslots:
                         for i in range(4):
                             kn = start + i
                             if kn in ctrkeys.ctrkeys["keyslots"]:
-                                ctrkeys.ctrkeys["keyslots"][kn][type] = int.from_bytes(boot9.read(16),"big")
+                                ctrkeys.ctrkeys["keyslots"][kn][type] = int(AESKey(boot9.read(16)))
                             else:
-                                ctrkeys.ctrkeys["keyslots"][kn] = {type:int.from_bytes(boot9.read(16),'big')}
+                                ctrkeys.ctrkeys["keyslots"][kn] = {type:int(AESKey(boot9.read(16)))}
                     else:
-                        key = int.from_bytes(boot9.read(16), 'big')
+                        key = int(AESKey(boot9.read(16)))
                         for i in range(4):
                             kn = start + i
                             if kn in ctrkeys.ctrkeys["keyslots"]:
@@ -129,6 +131,11 @@ class Keyslots:
                                 ctrkeys.ctrkeys["keyslots"][kn] = {type: key}
                     if not increase_after:
                         boot9.seek(o)
+
+                boot9.seek(0xD6E0)
+                ctrkeys.ctrkeys["otp"] = {
+                        "key":int(AESKey(boot9.read(16))),
+                        "iv":int(AESKey(boot9.read(16)))}
 
         except:
             raise ValueError("Could not read the bootrom for the common keys")
