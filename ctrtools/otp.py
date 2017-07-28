@@ -8,7 +8,6 @@ class OTP(object):
         if not "otp" in ctrkeys.ctrkeys["contents"]:
             OTP.parseOTP()
         self.decrypted=ctrkeys.ctrkeys["otp"]["decrypted"]
-        self.aeskeydata = ctrkeys.ctrkeys["otp"]["decrypted"][0x90:0xAC]
     @staticmethod
     def parseOTP():
         try:

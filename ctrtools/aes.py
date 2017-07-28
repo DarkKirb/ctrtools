@@ -1,5 +1,9 @@
 from Crypto.Cipher import AES
 from . import ctrkeys
+from . import aes
+from .otp import OTP
+import hashlib
+import io
 
 def asint128(a):
     return a & (2**128-1)
@@ -22,21 +26,23 @@ class AESKey(object):
         return self.key
 
     def __add__(self, other):
-        return AESKey(self.key - other.key)
+        if isinstance(other, int):
+            return self + AESKey(other)
+        return AESKey(self.key + other.key, self.twl)
     def __sub__(self, other):
         if self.key < other.key:
-            return AESKey((self.key+2**128)-other.key)
-        return AESKey(self.key-other.key)
+            return AESKey((self.key+2**128)-other.key, self.twl)
+        return AESKey(self.key-other.key, self.twl)
     def __or__(self, other):
-        return AESKey(self.key | other.key)
+        return AESKey(self.key | other.key, self.twl)
     def __xor__(self, other):
-        return AESKey(self.key ^ other.key)
+        return AESKey(self.key ^ other.key, self.twl)
     def __lshift__(self, other):
-        return AESKey(self.key<<other)
+        return AESKey(self.key<<other, self.twl)
     def __rshift__(self, other):
-        return AESKey(self,key>>other)
+        return AESKey(self.key>>other, self.twl)
     def reverse(self):
-        return AESKey(bytes(self)[::-1])
+        return AESKey(bytes(self)[::-1], self.twl)
     @staticmethod
     def scramble_ctr(keyX, keyY):
         rotate = lambda c,v: (c << v) | (c >> (128-v))
@@ -81,10 +87,17 @@ class AESKey(object):
 
         return cipher.decrypt(data)
 
+def representAESKey(dumper, data):
+    return dumper.represent_int(hex(data.key))
+ctrkeys.yaml.add_representer(AESKey, representAESKey)
+
+
 class Keyslots:
     def __init__(self):
         if not "b9 common" in ctrkeys.ctrkeys["contents"]:
             Keyslots.getCommon()
+        if not "b9 conunique" in ctrkeys.ctrkeys["contents"]:
+            Keyslots.getUnique()
     @staticmethod
     def getCommon():
         try:
@@ -118,9 +131,9 @@ class Keyslots:
                         for i in range(4):
                             kn = start + i
                             if kn in ctrkeys.ctrkeys["keyslots"]:
-                                ctrkeys.ctrkeys["keyslots"][kn][type] = int(AESKey(boot9.read(16)))
+                                ctrkeys.ctrkeys["keyslots"][kn][type] = AESKey(boot9.read(16))
                             else:
-                                ctrkeys.ctrkeys["keyslots"][kn] = {type:int(AESKey(boot9.read(16)))}
+                                ctrkeys.ctrkeys["keyslots"][kn] = {type:AESKey(boot9.read(16))}
                     else:
                         key = int(AESKey(boot9.read(16)))
                         for i in range(4):
@@ -140,4 +153,66 @@ class Keyslots:
         except:
             raise ValueError("Could not read the bootrom for the common keys")
         ctrkeys.ctrkeys["contents"].append("b9 common")
+        ctrkeys.savekeys()
+    @staticmethod
+    def getUnique():
+        otp = OTP()
+        try:
+            with open("data/boot9.bin", "rb") as boot9:
+                boot9.seek(0xD860)
+                _3fgendata = boot9.read(0x24)
+                boot9.seek(0xD860)
+                h = hashlib.sha256(otp.decrypted[:28] + _3fgendata).digest()
+                ctrkeys.ctrkeys["keyslots"][0x3F] = {
+                        "X": AESKey(h[:16]),
+                        "Y": AESKey(h[16:])
+                        }
+                ctrkeys.ctrkeys["keyslots"][0x3F]['N'] = AESKey.scramble_ctr(AESKey(h[:16]), AESKey(h[16:]))
+                keys = [
+                        (64,
+                         (0x04, 'X', False, False),
+                         (0x08, 'X', False, False),
+                         (0x0C, 'X', False, False),
+                         (0x10, 'X', False, True),
+                        ),
+                        (16,
+                         (0x14, 'X', True, False),
+                        ),
+                        (64,
+                         (0x18, 'X', False, False),
+                         (0x1C, 'X', False, False),
+                         (0x20, 'X', False, False),
+                         (0x24, 'X', False, True),
+                        ),
+                        (16,
+                         (0x28, 'X', True, False),
+                        ),
+                    ]
+                def setKey(slot, type, val):
+                    if slot in ctrkeys.ctrkeys["keyslots"]:
+                        ctrkeys.ctrkeys["keyslots"][slot][type] = val
+                    else:
+                        ctrkeys.ctrkeys["keyslots"][slot] = {type:val}
+                for group in keys:
+                    dataLength = group[0]
+                    boot9.read(36)
+                    aesiv = boot9.read(16)
+                    o = boot9.tell()
+                    conunique = boot9.read(64)
+                    boot9.seek(o+dataLength)
+                    keydata = io.BytesIO(ctrkeys.ctrkeys["keyslots"][0x3F]['N'].encrypt("cbc", conunique, aesiv))
+                    for keyslot, keytype, increasing, single in group[1:]:
+                        if single:
+                            setKey(keyslot, keytype, AESKey(keydata.read(16)))
+                        else:
+                            if increasing:
+                                for i in range(4):
+                                    setKey(keyslot+i, keytype, AESKey(keydata.read(16)))
+                            else:
+                                key = AESKey(keydata.read(16))
+                                for i in range(4):
+                                    setKey(keyslot+i, keytype, key)
+        except:
+            raise ValueError("Could not read the bootrom for the console unique keys")
+        ctrkeys.ctrkeys["contents"].append("b9 conunique")
         ctrkeys.savekeys()
