@@ -98,6 +98,17 @@ class Keyslots:
             Keyslots.getCommon()
         if not "b9 conunique" in ctrkeys.ctrkeys["contents"]:
             Keyslots.getUnique()
+        self.keyX={}
+        self.keyY={}
+        self.keys={}
+        for no, keyslot in ctrkeys.ctrkeys["keyslots"].items():
+            if "N" in keyslot:
+                self.setKey(no, keyslot["N"])
+            if "X" in keyslot:
+                self.setKeyX(no, keyslot["X"])
+            if "Y" in keyslot:
+                self.setKeyY(no, keyslot["Y"])
+        self.save()
     @staticmethod
     def getCommon():
         try:
@@ -215,4 +226,46 @@ class Keyslots:
         except:
             raise ValueError("Could not read the bootrom for the console unique keys")
         ctrkeys.ctrkeys["contents"].append("b9 conunique")
+        ctrkeys.savekeys()
+    def setKeyX(self, keyno, key):
+        twl = False
+        if keyno <= 4:
+            twl = True
+        if isinstance(key, int):
+            self.keyX[keyno]=AESKey(key, twl)
+        else:
+            self.keyX[keyno]=key
+    def setKeyY(self, keyno, key):
+        twl = False
+        if keyno <= 4:
+            twl = True
+        if isinstance(key, int):
+            self.keyY[keyno]=AESKey(key, twl)
+        else:
+            self.keyY[keyno]=key
+        if keyno <= 4:
+            self.keys[keyno] = AESKey.scramble_twl(self.keyX[keyno], self.keyY[keyno])
+        else:
+            self.keys[keyno] = AESKey.scramble_ctr(self.keyX[keyno], self.keyY[keyno])
+    def setKey(self, keyno, key):
+        twl = False
+        if keyno <= 4:
+            twl = True
+        if isinstance(key, int):
+            self.keys[keyno]=AESKey(key, twl)
+        else:
+            self.keys[keyno]=key
+    def save(self):
+        for k,v in self.keyX.items():
+            ctrkeys.ctrkeys["keyslots"][k] = {"X": v}
+        for k,v in self.keyY.items():
+            if k in self.keyX:
+                ctrkeys.ctrkeys["keyslots"][k]["Y"] = v
+            else:
+                ctrkeys.ctrkeys["keyslots"][k] = {"Y":v}
+        for k,v in self.keys.items():
+            if (k in self.keyX) or (k in self.keyY):
+                ctrkeys.ctrkeys["keyslots"][k]["N"] = v
+            else:
+                ctrkeys.ctrkeys["keyslots"][k] = {"N":v}
         ctrkeys.savekeys()
