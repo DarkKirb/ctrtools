@@ -1,4 +1,5 @@
 from Crypto.Cipher import AES
+from Crypto.Util import Counter
 from . import ctrkeys
 from . import aes
 from .otp import OTP
@@ -60,7 +61,7 @@ class AESKey(object):
         elif mode == "cbc":
             cipher = AES.new(bytes(self), AES.MODE_CBC, iv)
         elif mode == "ctr":
-            cipher = AES.new(bytes(self), AES.MODE_CTR, iv)
+            cipher = AES.new(bytes(self), AES.MODE_CTR, counter=Counter.new(128,allow_wraparound=True,initial_value=iv))
         else:
             raise ValueError("Unknown mode {}!".format(mode))
 
