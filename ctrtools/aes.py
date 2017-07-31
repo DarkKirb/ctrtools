@@ -174,7 +174,7 @@ class Keyslots:
                 boot9.seek(0xD860)
                 _3fgendata = boot9.read(0x24)
                 boot9.seek(0xD860)
-                h = hashlib.sha256(otp.decrypted[:28] + _3fgendata).digest()
+                h = hashlib.sha256(otp.decrypted[0x90:0xAC] + _3fgendata).digest()
                 ctrkeys.ctrkeys["keyslots"][0x3F] = {
                         "X": AESKey(h[:16]),
                         "Y": AESKey(h[16:])

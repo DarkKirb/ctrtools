@@ -13,7 +13,8 @@ class ExeFS:
     def open(self, fname):
         if not fname in self.files:
             raise FileNotFoundError("Could not find file {}!".format(fname))
-        return ExeFSFile(self.f, self.files[fname][0]+self.off, self.files[fname][1])
+        return ExeFSFile(self.f, self.files[fname][0]+self.off+0x200, self.files[fname][1])
+
 
 class ExeFSFile:
     def __init__(self, f, off, size):

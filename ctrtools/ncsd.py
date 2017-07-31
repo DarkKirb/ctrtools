@@ -75,22 +75,26 @@ class NCSD_Part(object):
         pass
     def read(self, length=None):
         o=self.f.tell()
+        self.f.seek(self.off+self.pos)
         if length is None or length > self.size - self.pos:
             length = self.size - self.pos
         data = b''
         if self.pos & 0xF:
             self.f.seek(self.off + (self.pos & 0xFFFFFFF0))
             trailer = self.f.read(16)
-            data += self.decrypt(self, self.pos & 0xFFFFFFF0, trailer)[16-(self.pos&0xF):length+16-(self.pos&0xF)]
+            data += self.decrypt(self.pos & 0xFFFFFFF0, trailer)[self.pos&0xF:length + (self.pos&0xF)]
             self.pos += len(data)
             length -= len(data)
         if not length:
+            self.f.seek(o)
             return data
         data+= self.decrypt(self.pos, self.f.read(length & 0xFFFFFFF0))
         self.pos += length & 0xFFFFFFF0
         length &= 0xF
         if length:
             data+=self.decrypt(self.pos, self.f.read(16))[:length]
+            self.pos += length
+        self.f.seek(o)
         return data
     def tell(self):
         return self.pos
@@ -145,14 +149,15 @@ class NCSD_Encrypted(NCSD_Part):
                 cidFile = fs.open("nand_cid")
                 cid = cidFile.read(16)
                 ctriv = hashlib.sha256(cid).digest()[:16]
-                twliv = hashlib.sha1(cid).digest()[:16] #TODO because I know TWL there might be some transformations like swapping endian
+                twliv = hashlib.sha1(cid).digest()[:16]
                 ctrkeys.ctrkeys["nand"] = {
                     "cid":cid,
-                    "iv":{"ctr":aes.AESKey(ctriv), "twl":aes.AESKey(twliv, True)}
+                    "iv":{"ctr":aes.AESKey(ctriv), "twl":aes.AESKey(twliv[::-1], True)}
                         }
                 ctrkeys.ctrkeys["contents"].append("nand")
                 self.keys.save()
     def decrypt(self, pos, data):
+        pos+=self.off
         if self.keyslot <= 4:
             return self.keys.keys[self.keyslot].decrypt("ctr", data, int(ctrkeys.ctrkeys["nand"]["iv"]["twl"]+pos//16))
         else:
