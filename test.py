@@ -6,5 +6,4 @@ ctrnand_mbr=mbr.MBR(ctrnand)
 ctrnand_part=ctrnand_mbr.open(0)
 from ctrtools import fat
 f=fat.FAT(ctrnand_part)
-print(f.open_dir("/σitle"))
-
+print(f.open_dir("/rw/sys"))
