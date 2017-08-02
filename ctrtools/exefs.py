@@ -15,5 +15,8 @@ class ExeFS:
         if not fname in self.files:
             raise FileNotFoundError("Could not find file {}!".format(fname))
         return common.BoundedReader(self.f, self.files[fname][0]+self.off+0x200, self.files[fname][1])
-
-
+    def open_dir(self, fname):
+        files=[]
+        for fname, off, size in self.files.items():
+            files.append((fname, False, off, size))
+        return files

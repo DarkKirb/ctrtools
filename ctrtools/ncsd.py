@@ -38,6 +38,11 @@ class NCSD(object):
         if not partID in self.partitions:
             raise FileNotFoundError("Could not find NCSD Partition {}!".format(partID))
         return NCSD_Part(self.f, *self.partitions[partID])
+    def open_dir(self, fname):
+        parts=[]
+        for pid, start, size in self.partitions.items():
+            parts.append((pid, False, start, size))
+        return parts
 
 class NCSD_NAND(NCSD):
     def __init__(self, f):

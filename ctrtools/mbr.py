@@ -19,4 +19,8 @@ class MBR:
         if not partid in self.parts:
             raise FileNotFoundError("Could not find partition {}!".format(partid))
         return common.BoundedReader(self.f, self.parts[partid][0]*512 + self.off, self.parts[partid][1]*512)
-
+    def open_dir(self, fname):
+        parts=[]
+        for partid, start, length in self.parts.items():
+            parts.append((partid,start,length))
+        return parts
